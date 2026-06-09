@@ -1,0 +1,285 @@
+/**
+ * Prisma schema for VideoConf Platform
+ * 
+ * This schema is designed to be compatible with Supabase PostgreSQL.
+ * All tables will have Row Level Security (RLS) enabled in Supabase.
+ * 
+ * Models:
+ * - User: Represents a user of the platform (linked to Supabase Auth)
+ * - Meeting: Represents a video meeting room
+ * - Participant: Represents a user's participation in a meeting
+ * - Invitation: Represents an invitation to a meeting
+ * - Analytics: Stores focus detection and post-meeting analytics
+ * - Message: Represents a chat message in a meeting
+ * - Notification: Represents a notification for a user
+ * - AuditLog: Stores audit trails for security and compliance
+ */
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * User model
+ * 
+ * Note: In Supabase, we will have a corresponding table in the auth schema.
+ * We store the Supabase user ID (uuid) and link to our public schema.
+ * 
+ * RLS Policy: Users can only read/update their own record.
+ */
+model User {
+  id            String   @id @default(uuid()) // Supabase Auth user ID (uuid)
+  email         String   @unique
+  name          String?
+  avatarUrl     String?
+  emailVerified DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  meetingsHosted   Meeting[]   @relation("HostedMeetings")
+  meetingsJoined   Participant[] @relation("JoinedMeetings")
+  invitationsSent  Invitation[] @relation("InvitationsSent")
+  invitationsReceived Invitation[] @relation("InvitationsReceived")
+  analytics        Analytics[]
+  messagesSent     Message[]   @relation("MessagesSent")
+  notifications    Notification[] @relation("NotificationsForUser")
+  auditLogs        AuditLog[]   @relation("AuditLogsByUser")
+
+  @@index([email])
+}
+
+/**
+ * Meeting model
+ * 
+ * Represents a video meeting room.
+ * 
+ * RLS Policy: 
+ *   - Host can read/update/delete
+ *   - Participants can read (if meeting is not private or they are invited)
+ *   - Public meetings can be read by anyone (if isPublic is true)
+ */
+model Meeting {
+  id               String   @id @default(uuid())
+  title            String
+  description      String?
+  scheduledStart   DateTime?
+  actualStart      DateTime?
+  actualEnd        DateTime?
+  hostId           String   // References User.id
+  isPublic         Boolean  @default(false)
+  meetingToken     String   @unique // LiveKit token for joining
+  waitingRoomEnabled Boolean @default(true)
+  maxParticipants  Int      @default(50)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  host             User      @relation("HostedMeetings", fields: [hostId], references: [id])
+  participants     Participant[] @relation("MeetingParticipants")
+  invitations      Invitation[] @relation("MeetingInvitations")
+  analytics        Analytics?
+  messages         Message[]   @relation("MeetingMessages")
+  notifications    Notification[] @relation("MeetingNotifications")
+
+  @@index([hostId])
+  @@index([isPublic])
+  @@index([scheduledStart])
+}
+
+/**
+ * Participant model
+ * 
+ * Represents a user's participation in a meeting.
+ * 
+ * RLS Policy: 
+ *   - Participants can read/update their own participation record.
+ *   - Host can read/update/delete any participation in their meeting.
+ */
+model Participant {
+  id          String   @id @default(uuid())
+  userId      String   // References User.id
+  meetingId   String   // References Meeting.id
+  joinedAt    DateTime @default(now())
+  leftAt      DateTime?
+  isHost      Boolean  @default(false) // True if user is the meeting host (redundant with hostId in Meeting for quick checks)
+  isWaiting   Boolean  @default(true)  // In waiting room or not
+  deviceInfo  Json?    // Stores browser/device info
+  // Relations
+  user        User     @relation("JoinedMeetings", fields: [userId], references: [id])
+  meeting     Meeting  @relation("MeetingParticipants", fields: [meetingId], references: [id])
+
+  @@unique([userId, meetingId])
+  @@index([meetingId])
+  @@index([userId])
+}
+
+/**
+ * Invitation model
+ * 
+ * Represents an invitation to a meeting.
+ * 
+ * RLS Policy:
+ *   - Inviter can read/update/delete their sent invitations.
+ *   - Invitee can read/update their received invitations.
+ */
+model Invitation {
+  id           String   @id @default(uuid())
+  meetingId    String   // References Meeting.id
+  inviterId    String   // References User.id (who sent the invitation)
+  inviteeId    String   // References User.id (who is invited)
+  status       InvitationStatus @default(PENDING)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  meeting      Meeting  @relation("MeetingInvitations", fields: [meetingId], references: [id])
+  inviter      User     @relation("InvitationsSent", fields: [inviterId], references: [id])
+  invitee      User     @relation("InvitationsReceived", fields: [inviteeId], references: [id])
+
+  @@index([meetingId])
+  @@index([inviterId])
+  @@index([inviteeId])
+  @@index([status])
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+/**
+ * Analytics model
+ * 
+ * Stores focus detection scores and post-meeting analytics.
+ * 
+ * RLS Policy:
+ *   - User can read/update/delete their own analytics.
+ *   - Host can read analytics for their meetings.
+ */
+model Analytics {
+  id           String   @id @default(uuid())
+  meetingId    String   // References Meeting.id
+  userId       String   // References User.id
+  focusScore   Int?     // Average focus score (0-100) from AI detection
+  attentionScore Int?   // Post-meeting attention score (0-100)
+  speakingTime Int?     // Total speaking time in seconds
+  joinDuration Int?     // Duration user was in meeting (seconds)
+  participationScore Int? // Composite participation score (0-100)
+  createdAt    DateTime @default(now())
+
+  // Relations
+  meeting      Meeting  @relation("MeetingAnalytics", fields: [meetingId], references: [id])
+  user         User     @relation("UserAnalytics", fields: [userId], references: [id])
+
+  @@index([meetingId])
+  @@index([userId])
+  @@unique([meetingId, userId]) // One analytics record per user per meeting
+}
+
+/**
+ * Message model
+ * 
+ * Represents a chat message in a meeting.
+ * 
+ * RLS Policy:
+ *   - Sender can read/update/delete their own messages.
+ *   - Meeting participants can read messages in the meeting.
+ *   - Host can delete any message in their meeting.
+ */
+model Message {
+  id          String   @id @default(uuid())
+  meetingId   String   // References Meeting.id
+  senderId    String   // References User.id
+  content     String
+  type        MessageType @default(TEXT) // TEXT, FILE, SYSTEM
+  fileUrl     String?  // For FILE type, URL to uploaded file
+  fileName    String?  // Original file name
+  createdAt   DateTime @default(now())
+
+  // Relations
+  meeting     Meeting  @relation("MeetingMessages", fields: [meetingId], references: [id])
+  sender      User     @relation("MessagesSent", fields: [senderId], references: [id])
+
+  @@index([meetingId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+enum MessageType {
+  TEXT
+  FILE
+  SYSTEM
+}
+
+/**
+ * Notification model
+ * 
+ * Represents a notification for a user.
+ * 
+ * RLS Policy:
+ *   - User can read/update/delete their own notifications.
+ */
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String   // References User.id
+  meetingId   String?  // References Meeting.id (if meeting-related)
+  type        NotificationType
+  title       String
+  body        String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  user        User     @relation("NotificationsForUser", fields: [userId], references: [id])
+  meeting     Meeting? @relation("MeetingNotifications", fields: [meetingId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  MEETING_INVITE
+  MEETING_STARTING
+  MEETING_ENDED
+  NEW_MESSAGE
+  RECORDING_READY
+  MODERATION_ACTION
+  SYSTEM_ALERT
+}
+
+/**
+ * AuditLog model
+ * 
+ * Stores audit trails for security and compliance.
+ * 
+ * RLS Policy:
+ *   - Only admins (or system) can read audit logs.
+ *   - Users can not read audit logs (but system can write).
+ */
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?  // References User.id (if action performed by a user, nullable for system actions)
+  action      String   // Description of the action (e.g., "USER_LOGIN", "MEETING_CREATE")
+  entityType  String   // Type of entity affected (e.g., "USER", "MEETING", "MESSAGE")
+  entityId    String?  // ID of the entity affected
+  details     Json?    // Additional details about the action
+  ipAddress   String?  // IP address of the actor
+  userAgent   String?  // User agent of the actor
+  createdAt   DateTime @default(now())
+
+  // Relations
+  user        User?    @relation("AuditLogsByUser", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
