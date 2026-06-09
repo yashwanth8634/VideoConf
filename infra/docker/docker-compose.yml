@@ -1,0 +1,83 @@
+# Docker Compose configuration for VideoConf Platform
+# 
+# This configuration sets up the infrastructure needed for local development:
+# - Redis: For caching and realtime features (Socket.IO)
+# - LiveKit: For WebRTC/SFU video conferencing
+#
+# Note: We are using Supabase for PostgreSQL and Authentication, so those services
+# are not included in this docker-compose file. You must set up a Supabase project
+# and provide the connection details via environment variables.
+#
+# For local development of the backend and frontend, you can run them directly
+# using `npm run dev` in their respective directories, or you can uncomment the
+# backend and frontend services below to run them in Docker.
+
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: videoconf_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    networks:
+      - videoconf_network
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: videoconf_livekit
+    ports:
+      - "7880:7880"   # HTTP
+      - "7881:7881"   # HTTPS
+      - "7980:7980/udp" # UDP for media
+    environment:
+      - LIVEKIT_HOST=localhost:7880
+      - LIVEKIT_KEY=devkey
+      - LIVEKIT_SECRET=devsecret
+      - LIVEKIT_PORT=7880
+      - LIVEKIT_NODE_ID=dev-node
+    volumes:
+      - ./livekit.yaml:/livekit/conf/livekit.yaml:ro
+    networks:
+      - videoconf_network
+
+  # Uncomment the following services to run backend and frontend in Docker
+  # backend:
+  #   build: ../../../backend
+  #   container_name: videoconf_backend
+  #   ports:
+  #     - "4000:4000"
+  #   env_file:
+  #     - ../../../.env
+  #   volumes:
+  #     - ../../../backend:/app
+  #     - /app/node_modules
+  #   depends_on:
+  #     - redis
+  #   networks:
+  #     - videoconf_network
+  #
+  # frontend:
+  #   build: ../../../frontend
+  #   container_name: videoconf_frontend
+  #   ports:
+  #     - "3000:3000"
+  #   env_file:
+  #     - ../../../.env
+  #   volumes:
+  #     - ../../../frontend:/app
+  #     - /app/node_modules
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - videoconf_network
+
+networks:
+  videoconf_network:
+    driver: bridge
+
+volumes:
+  redis_data:

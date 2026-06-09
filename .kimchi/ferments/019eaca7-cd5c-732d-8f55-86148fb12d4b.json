@@ -1,0 +1,15 @@
+{
+  "id": "019eaca7-cd5c-732d-8f55-86148fb12d4b",
+  "name": "VideoConf Platform",
+  "description": "Build a Zoom/Google Meet style video conferencing platform. The platform must be secure, scalable, maintainable, well documented, beginner friendly, production ready. Explain every important decision, add comments everywhere, never assume knowledge, generate detailed documentation, show complete folder structure, show complete setup instructions, explain why each technology is chosen. Use existing tools: LiveKit, Supabase Auth, PostgreSQL, Redis, Prisma, Docker, Next.js, Tailwind, shadcn/ui. Features: authentication, meetings, video, chat, recording, AI focus detection, post meeting analytics, moderation, security. Microservice architecture: API Gateway, Auth Service, Meeting Service, Analytics Service, Moderation Service, Notification Service. Database design: ER diagram, tables, relationships, indexes, constraints for Users, Meetings, Participants, Invitations, Analytics, Messages, Notifications, AuditLogs. Folder structure: complete with explanations. Code requirements: full file paths, complete code, detailed comments, JSDoc, error handling, validation, logging, security best practices. Documentation: README.md, ARCHITECTURE.md, API.md, DATABASE.md, SECURITY.md, CONTRIBUTING.md. Local development: docker-compose.yml, .env.example, startup scripts. Output order: Architecture Review, Folder Structure, Database Design, Docker Setup, Shared Packages, Backend Services, Frontend, AI Modules, Documentation, Deployment Guide.",
+  "status": "draft",
+  "worktree": {
+    "path": "/Users/yashwanthreddykoppula/Desktop/VideoConference"
+  },
+  "scoping": {},
+  "phases": [],
+  "decisions": [],
+  "memories": [],
+  "createdAt": "2026-06-09T13:52:18.780Z",
+  "updatedAt": "2026-06-09T13:52:18.780Z"
+}
